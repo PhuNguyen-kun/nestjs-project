@@ -1,26 +1,31 @@
 import { Body, Controller, Get, Param, Post, Render } from '@nestjs/common';
-import { CreatePetCategoryDto } from '../../dtos/pet-dto';
+import { CreatePetCategoryDto } from 'src/pet/dtos/pet-dto';
 import { plainToInstance } from 'class-transformer';
 import { validate, ValidationError } from 'class-validator';
 import { FormDataRequest } from 'nestjs-form-data';
+import { PetCategory } from 'src/pet/models/pet-category.model';
 
 const transformError = (error: ValidationError) => {
   const { property, constraints } = error;
   return {
     property,
-    constraints,
+    constraints: constraints || {},
   };
 };
 
 @Controller('admin/pet-categories')
 export class ManagePetCategoryController {
   @Get('')
-  getList() {
-    return 'admin pet category list';
+  @Render('pet/admin/manage-pet-category/list')
+  async getList() {
+    const petCategories = await PetCategory.findAll();
+    return {
+      petCategories,
+    };
   }
 
   @Get('create')
-  @Render('pet/admin/manege-pet-category/create')
+  @Render('pet/admin/manage-pet-category/create')
   view_create() {
     return {
       data: {
@@ -30,9 +35,45 @@ export class ManagePetCategoryController {
   }
 
   @Post('create')
-  @Render('pet/admin/manege-pet-category/create')
+  @Render('pet/admin/manage-pet-category/create')
   @FormDataRequest()
-  async create(@Body() body: CreatePetCategoryDto) {}
+  async create(@Body() createPetCategoryDto: CreatePetCategoryDto) {
+    const data = {
+      mode: 'create',
+    };
+    // validation
+    const object = plainToInstance(CreatePetCategoryDto, createPetCategoryDto);
+    const errors = await validate(object, {
+      stopAtFirstError: true,
+    });
+    if (errors.length > 0) {
+      Reflect.set(data, 'error', 'Please correct all fields!');
+      const responseError = {};
+      errors.map((error) => {
+        const rawError = transformError(error);
+        Reflect.set(
+          responseError,
+          rawError.property,
+          Object.values(rawError.constraints)[0],
+        );
+      });
+      Reflect.set(data, 'errors', responseError);
+      return { data };
+    }
+    // set value and show success message
+    Reflect.set(data, 'values', object);
+
+    // create PetCategory
+    const newPetCategory = await PetCategory.create({ ...object });
+
+    Reflect.set(
+      data,
+      'success',
+      `Pet Category : ${newPetCategory.id} - ${newPetCategory.name} has been created!`,
+    );
+    // success
+    return { data };
+  }
 
   @Get(':id')
   getDetail(@Param('id') id: number) {
